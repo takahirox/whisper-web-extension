@@ -1,0 +1,3 @@
+[submodule "extensions/models/whisper-base.en"]
+	path = extensions/models/whisper-base.en
+	url = https://huggingface.co/Xenova/whisper-base.en

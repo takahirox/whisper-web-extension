@@ -1,0 +1,43 @@
+{
+  "name": "whisper-web-extension",
+  "version": "0.0.1",
+  "description": "Speach recognition with Whisper as Web extension",
+  "main": "dist/whisper-web-extension.bundle.js",
+  "keywords": [
+    "ai",
+    "browser",
+    "browser-extension",
+    "chrome",
+    "chrome-extension",
+    "speach-recognition",
+    "typescript",
+    "webext",
+    "webextension"
+  ],
+  "scripts": {
+    "build": "webpack",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "webpack --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/takahirox/whisper-web-extension.git"
+  },
+  "author": "Takahiro <hogehoge@gachapin.jp>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/takahirox/whisper-web-extension/issues"
+  },
+  "homepage": "https://github.com/takahirox/whisper-web-extension#readme",
+  "dependencies": {
+    "@xenova/transformers": "^2.13.4",
+    "fix-webm-duration": "^1.0.5"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.256",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.3",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  }
+}

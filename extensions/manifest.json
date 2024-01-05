@@ -1,0 +1,38 @@
+{
+  "name": "Whisper Web extension",
+  "version": "0.0.1",
+  "minimum_chrome_version": "10.0",
+  "devtools_page": "src/extension/devtools.html",
+  "description": "Speach recognition with Whisper as Web extension",
+  "author": "Takahiro Aoyagi <hogehoge@gachapin.jp>",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "content_scripts": [{
+    "matches": [
+      "file://*/*",
+      "http://*/*",
+      "https://*/*"
+    ],
+    "js": [
+      "content-script.js"
+    ],
+    "run_at": "document_end"
+  }],
+  "manifest_version": 3,
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [{
+    "resources": ["icons/*"],
+    "matches": [
+      "file://*/*",
+      "http://*/*",
+      "https://*/*"
+    ]
+  }]
+}
