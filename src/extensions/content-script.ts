@@ -7,6 +7,68 @@ import {
   ResponseMessageData
 } from "./common";
 
+//
+
+class WhisperExtension {
+  private static requestQueue: {
+    data: RequestMessageData,
+    callback: (text: string) => void,
+    errorCallback: (message: string) => void
+  }[] = [];
+  private static port = chrome.runtime.connect();
+
+  static init(): void {
+    this.port.onMessage.addListener((msg: Message) => {
+      switch (msg.type) {
+        case MessageType.Response:
+        {
+          const { text } = msg.data as ResponseMessageData;
+          const request = this.requestQueue.shift();
+          URL.revokeObjectURL(request.data.url);
+          request.callback(text);
+          break;
+        }
+
+        case MessageType.Error:
+        {
+          const { message } = msg.data as ErrorMessageData;
+          const request = this.requestQueue.shift();
+          URL.revokeObjectURL(request.data.url);
+          request.errorCallback(message);
+          break;
+        }
+
+        default:
+        {
+          console.error(`Unknown message type ${msg.type}`);
+        }
+      }
+    });
+  }
+
+  static async request(audioData: Float32Array): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const data = {
+        url: URL.createObjectURL(new Blob([audioData.buffer]))
+      } as RequestMessageData;
+      this.requestQueue.push({
+        callback: resolve,
+        errorCallback: reject,
+        data
+      });
+      this.port.postMessage({
+        type: MessageType.Request,
+        data
+      } as Message);
+    });
+  }
+}
+
+WhisperExtension.init();
+(window as any).WhisperExtension = WhisperExtension;
+
+//
+
 const mimeType = (() => {
   const types = [
     'audio/webm',
@@ -40,45 +102,63 @@ micIcon.style.right = '0px';
 micIcon.style.top = '0px';
 micIcon.style.width = '16px';
 
+const enum IconState {
+  Ready,
+  WaitingForUserMedia,
+  Recording,
+  RecordingStopRequested,
+  RecordingStopped
+}
+
+let iconState: IconState = IconState.Ready;
+
+const updateIconState = (state: IconState): void => {
+  switch (state) {
+    case IconState.Ready:
+    {
+      micIcon.src = whiteMicIconPath;
+      micIcon.style.opacity = '1.0';
+      break;
+    }
+    case IconState.WaitingForUserMedia:
+    {
+      micIcon.src = whiteMicIconPath;
+      micIcon.style.opacity = '0.5';
+      break;
+    }
+    case IconState.Recording:
+    {
+      micIcon.src = blackMicIconPath;
+      micIcon.style.opacity = '1.0';
+      break;
+    }
+    case IconState.RecordingStopRequested:
+    {
+      micIcon.src = blackMicIconPath;
+      micIcon.style.opacity = '0.5';
+      break;
+    }
+    case IconState.RecordingStopped:
+    {
+      micIcon.src = whiteMicIconPath;
+      micIcon.style.opacity = '0.5';
+      break;
+    }
+  }
+
+  iconState = state;
+};
+
+const isIconEnabled = (): boolean => {
+  return iconState === IconState.Ready || iconState === IconState.Recording;
+};
+
 let stream: MediaStream | null = null;
 let recorder: MediaRecorder | null = null;
 let targetElement: Element;
 
-const sendRequest = (audioData: Float32Array): void => {
-  port.postMessage({
-    type: MessageType.Request,
-    data: {
-      url: URL.createObjectURL(new Blob([audioData.buffer]))
-    } as RequestMessageData
-  } as Message);
-};
-
-const handleResponse = (text: string): void => {
-  // TODO: The property to store should depend on element type.
-  //       Especially contenteditable element is tricky.
-  targetElement.textContent = text;
-  micIcon.style.opacity = '1.0';
-};
-
-const handleError = (message: string): void => {
-  console.error(message);
-  micIcon.style.opacity = '1.0';
-};
-
-const disableIcon = (): void => {
-  micIcon.style.opacity = '0.5';
-};
-
-const enableIcon = (): void => {
-  micIcon.style.opacity = '1.0';
-};
-
-const isIconEnabled = (): boolean => {
-  return Number(micIcon.style.opacity) === 1.0;
-};
-
 const startRecord = async (): Promise<void> => {
-  disableIcon();
+  updateIconState(IconState.WaitingForUserMedia);
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -87,12 +167,9 @@ const startRecord = async (): Promise<void> => {
     });
   } catch (error) {
     console.error(error);
+    updateIconState(IconState.Ready);
 	return;
-  } finally {
-    enableIcon();
   }
-
-  micIcon.src = blackMicIconPath;
 
   recorder = new MediaRecorder(stream, { mimeType });
   const chunks: Blob[] = [];
@@ -116,54 +193,40 @@ const startRecord = async (): Promise<void> => {
       const context = new AudioContext({ sampleRate: 16000 });
       const decoded = await context.decodeAudioData(await blob.arrayBuffer());
 
-      // TODO: Support stereo
-
-      const audioData = decoded.getChannelData(0);
-
-      sendRequest(audioData);
-
       stream.getTracks().forEach(track => {
         track.stop();
       });
       stream = null;
       recorder = null;
 
-      micIcon.src = whiteMicIconPath;
+      updateIconState(IconState.RecordingStopped);
+
+      // TODO: Support stereo
+
+      const audioData = decoded.getChannelData(0);
+
+      try {
+        const text = await WhisperExtension.request(audioData);
+
+        // TODO: The property to store should depend on element type.
+        //       Especially contenteditable element is tricky.
+        targetElement.textContent = text;
+      } catch (error) {
+        console.error(error.message);
+      }
+
+      updateIconState(IconState.Ready);
     }
   });
 
   recorder.start();
+  updateIconState(IconState.Recording);
 };
 
 const stopRecord = (): void => {
   recorder!.stop();
-  disableIcon();
+  updateIconState(IconState.RecordingStopRequested);
 };
-
-const port = chrome.runtime.connect();
-
-port.onMessage.addListener((msg: Message) => {
-  switch (msg.type) {
-    case MessageType.Response:
-    {
-      const { text } = msg.data as ResponseMessageData;
-      handleResponse(text);
-      break;
-    }
-
-    case MessageType.Error:
-    {
-      const { message } = msg.data as ErrorMessageData;
-      handleError(message);
-      break;
-    }
-
-    default:
-    {
-      console.error(`Unknown message type ${msg.type}`);
-    }
-  }
-});
 
 micIcon.addEventListener('click', async () => {
   if (!isIconEnabled()) {
